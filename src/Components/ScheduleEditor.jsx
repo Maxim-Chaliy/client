@@ -47,8 +47,6 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
         const subjectInput = document.getElementById('exampleSelect').value;
         const descriptionInput = document.getElementById('descriptionInput').value;
 
-        console.log('Input values:', { dateInput, timeInput, durationInput, subjectInput, descriptionInput });
-
         if (!dateInput || !timeInput || !durationInput || !subjectInput) {
             alert('Пожалуйста, заполните все обязательные поля');
             return;
@@ -58,8 +56,6 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
         const newStartTime = timeInput;
         const newDuration = parseInt(durationInput) || 60;
         const newEndTime = calculateEndTime(newStartTime, newDuration);
-
-        console.log('New schedule item:', { newDate, newStartTime, newDuration, newEndTime });
 
         const hasConflict = schedule.some(item => {
             const itemDate = new Date(item.date);
@@ -96,10 +92,9 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
             duration: newDuration,
             subject: subjectInput,
             description: descriptionInput || '',
-            attendance: false
+            attendance: false,
+            grade: null
         };
-
-        console.log('Sending new schedule item:', newScheduleItem);
 
         try {
             const response = await fetch('http://localhost:3001/api/schedules', {
@@ -110,8 +105,6 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
                 body: JSON.stringify(newScheduleItem),
             });
 
-            console.log('Response status:', response.status);
-
             if (response.ok) {
                 const savedScheduleItem = await response.json();
                 setSchedule([...schedule, savedScheduleItem]);
@@ -121,7 +114,6 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
                 document.getElementById('descriptionInput').value = '';
             } else {
                 const errorData = await response.json();
-                console.error('Error response:', errorData);
                 alert(errorData.error || 'Ошибка при добавлении занятия в расписание');
             }
         } catch (error) {
@@ -130,6 +122,30 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
         }
     };
 
+    const handleSaveGrade = async (id) => {
+        try {
+            const response = await fetch(`http://localhost:3001/api/schedules/${id}/updateGrade`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ grade: gradeValue }),
+            });
+
+            if (response.ok) {
+                const updatedScheduleItem = await response.json();
+                setSchedule(schedule.map(item => item._id === id ? updatedScheduleItem : item));
+                setEditingGrade(null);
+                setGradeValue('');
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Ошибка при сохранении оценки');
+            }
+        } catch (error) {
+            console.error('Ошибка при сохранении оценки:', error);
+            alert(error.message || 'Не удалось сохранить оценку');
+        }
+    };
 
     const handleAddToHomework = async () => {
         const dueDateInput = document.getElementById('dueDateInput').value;
@@ -192,36 +208,6 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
             console.error('Ошибка при обновлении посещаемости:', error);
         }
     };
-
-    const handleGradeChange = async (id, grade) => {
-        try {
-            console.log('Attempting to update grade for item:', id, 'with grade:', grade);
-
-            const response = await fetch(`http://localhost:3001/api/schedules/${id}/grade`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ grade: parseInt(grade) || null }),
-            });
-
-            if (response.ok) {
-                const updatedScheduleItem = await response.json();
-                console.log('Grade updated successfully:', updatedScheduleItem);
-                setSchedule(schedule.map(item => item._id === id ? updatedScheduleItem : item));
-                setEditingGrade(null);
-            } else {
-                const errorData = await response.json();
-                console.error('Failed to update grade:', errorData);
-                throw new Error('Ошибка при обновлении оценки');
-            }
-        } catch (error) {
-            console.error('Ошибка при обновлении оценки:', error);
-            alert('Не удалось обновить оценку');
-        }
-    };
-
-
 
     const handleSaveHomeworkGrade = async (id, studentId) => {
         try {
@@ -633,19 +619,19 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
                                                     </label>
                                                 </td>
                                                 <td>
-                                                    {editingGrade === item._id ? (
-                                                        <div className="grade-edit-container">
-                                                            <input
-                                                                type="number"
-                                                                value={gradeValue}
-                                                                onChange={(e) => setGradeValue(e.target.value)}
-                                                                className="grade-input"
-                                                                min="1"
-                                                                max="5"
-                                                            />
-                                                            <div className="grade-edit-actions">
+                                                    <div className='grade-edit-container'>
+                                                        {editingGrade === item._id ? (
+                                                            <>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    max="5"
+                                                                    value={gradeValue}
+                                                                    onChange={(e) => setGradeValue(e.target.value)}
+                                                                    className="grade-input"
+                                                                />
                                                                 <button
-                                                                    onClick={() => handleGradeChange(item._id, gradeValue)}
+                                                                    onClick={() => handleSaveGrade(item._id)}
                                                                     className="scheduleeditor-action-button save-button"
                                                                 >
                                                                     <FiCheck />
@@ -659,30 +645,29 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
                                                                 >
                                                                     <FiX />
                                                                 </button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="grade-display">
-                                                            {item.grade ? (
-                                                                <span className={`grade-badge grade-${item.grade}`}>
-                                                                    {item.grade}
-                                                                </span>
-                                                            ) : (
-                                                                <span>-</span>
-                                                            )}
-                                                            <button
-                                                                onClick={() => {
-                                                                    setEditingGrade(item._id);
-                                                                    setGradeValue(item.grade || '');
-                                                                }}
-                                                                className="scheduleeditor-action-button edit-button"
-                                                            >
-                                                                <FiEdit2 />
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                {item.grade ? (
+                                                                    <span className={`grade-badge grade-${item.grade}`}>
+                                                                        {item.grade}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span>-</span>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingGrade(item._id);
+                                                                        setGradeValue(item.grade || '');
+                                                                    }}
+                                                                    className="scheduleeditor-action-button edit-button"
+                                                                >
+                                                                    <FiEdit2 />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </td>
-
                                                 <td>
                                                     <div className="row-actions">
                                                         {editing === item._id ? (
@@ -703,15 +688,7 @@ const ScheduleEditor = ({ selectedUser, selectedGroup }) => {
                                                         ) : (
                                                             <>
                                                                 <button
-                                                                    onClick={() => {
-                                                                        const itemToEdit = schedule.find(i => i._id === item._id);
-                                                                        setEditing(item._id);
-                                                                        setEditValues({
-                                                                            ...itemToEdit,
-                                                                            date: formatDateForInput(itemToEdit.date),
-                                                                            grade: itemToEdit.grade || ''
-                                                                        });
-                                                                    }}
+                                                                    onClick={() => handleEdit(item._id)}
                                                                     className="scheduleeditor-action-button edit-button"
                                                                 >
                                                                     <FiEdit2 />
